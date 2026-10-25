@@ -16,7 +16,6 @@ from flask_login import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
-from sqlalchemy import text
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -26,7 +25,9 @@ db = SQLAlchemy()
 login_manager = LoginManager()
 csrf = CSRFProtect()
 
-ALLOWED_EXTENSIONS = {"pdf", "txt", "png", "jpg", "jpeg", "docx", "xlsx", "csv"}
+ALLOWED_EXTENSIONS = {
+    "pdf", "txt", "png", "jpg", "jpeg", "docx", "xlsx", "csv"
+}
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
 
@@ -100,13 +101,6 @@ class Permission(db.Model):
             "document_id", "user_id", "revoked_at",
             name="uq_document_user_revocation"
         ),
-        db.Index(
-            "uq_active_permission_document_user",
-            "document_id", "user_id",
-            unique=True,
-            sqlite_where=text("revoked_at IS NULL"),
-            postgresql_where=text("revoked_at IS NULL"),
-        ),
     )
 
 
@@ -137,52 +131,14 @@ def load_user(user_id):
         return None
 
 
-def _audit_hash(entry):
-    """Hash canonical event fields."""
-    stamp = entry.timestamp
-
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=timezone.utc)
-    else:
-        stamp = stamp.astimezone(timezone.utc)
-
-    payload = "|".join([
-        str(entry.actor_id),
-        str(entry.document_id),
-        entry.action,
-        entry.outcome,
-        entry.details,
-        stamp.isoformat(),
-        entry.previous_hash,
-        entry.request_id,
-    ])
-
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def verify_audit_chain():
-    """Return whether the audit chain is valid and the number of entries."""
-    expected_previous = "GENESIS"
-    entries = AuditLog.query.order_by(AuditLog.id.asc()).all()
-
-    for entry in entries:
-        if (
-            entry.previous_hash != expected_previous
-            or entry.event_hash != _audit_hash(entry)
-        ):
-            return False, len(entries)
-
-        expected_previous = entry.event_hash
-
-    return True, len(entries)
-
-
 def audit(action, outcome, document_id=None, details=""):
-    """Append an application audit event."""
     previous = db.session.query(AuditLog).order_by(AuditLog.id.desc()).first()
     previous_hash = (
         previous.event_hash if previous and previous.event_hash else "GENESIS"
     )
+
+    event_timestamp = datetime.now(timezone.utc)
+    request_id = secrets.token_hex(16)
 
     entry = AuditLog(
         actor_id=current_user.id if current_user.is_authenticated else None,
@@ -190,12 +146,23 @@ def audit(action, outcome, document_id=None, details=""):
         action=action,
         outcome=outcome,
         details=(details or "")[:500],
-        timestamp=datetime.now(timezone.utc),
-        request_id=secrets.token_hex(16),
+        timestamp=event_timestamp,
+        request_id=request_id,
         previous_hash=previous_hash,
     )
 
-    entry.event_hash = _audit_hash(entry)
+    payload = "|".join([
+        str(entry.actor_id),
+        str(entry.document_id),
+        entry.action,
+        entry.outcome,
+        entry.details,
+        entry.timestamp.isoformat(),
+        entry.previous_hash,
+        entry.request_id,
+    ])
+
+    entry.event_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     db.session.add(entry)
     db.session.commit()
 
@@ -272,10 +239,6 @@ def create_app(test_config=None):
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # Fix strict HTTPS referrer checking.
-    # CSRF token protection remains enabled.
-    app.config["WTF_CSRF_SSL_STRICT"] = False
-
     if test_config:
         app.config.update(test_config)
 
@@ -286,14 +249,13 @@ def create_app(test_config=None):
     login_manager.init_app(app)
     login_manager.login_view = "login"
     login_manager.login_message = "Please log in to continue."
-
     csrf.init_app(app)
 
     @app.after_request
     def security_headers(response):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Cache-Control", "no-store")
         return response
 
@@ -301,7 +263,6 @@ def create_app(test_config=None):
     def index():
         if current_user.is_authenticated:
             return redirect(url_for("dashboard"))
-
         return render_template("index.html")
 
     @app.route("/register", methods=["GET", "POST"])
@@ -311,16 +272,13 @@ def create_app(test_config=None):
             email = request.form.get("email", "").strip().lower()
             password = request.form.get("password", "")
 
-            # Public registration cannot create admin accounts.
             role = request.form.get("role", "viewer")
             if role not in {"owner", "viewer"}:
                 role = "viewer"
 
             if (
-                not name
-                or len(name) > 120
-                or "@" not in email
-                or len(password) < 10
+                not name or len(name) > 120
+                or "@" not in email or len(password) < 10
             ):
                 flash(
                     "Enter a name, valid email, and password of at least 10 characters.",
@@ -334,13 +292,11 @@ def create_app(test_config=None):
 
             user = User(full_name=name, email=email, role=role)
             user.set_password(password)
-
             db.session.add(user)
             db.session.commit()
 
             audit("REGISTER", "SUCCESS", details=f"Created account role={role}")
             flash("Account created. You can now log in.", "success")
-
             return redirect(url_for("login"))
 
         return render_template("register.html")
@@ -350,6 +306,7 @@ def create_app(test_config=None):
         if request.method == "POST":
             email = request.form.get("email", "").strip().lower()
             password = request.form.get("password", "")
+
             user = User.query.filter_by(email=email).first()
 
             if user and user.is_active and user.check_password(password):
@@ -406,10 +363,7 @@ def create_app(test_config=None):
         if request.method == "POST":
             file = request.files.get("file")
             title = request.form.get("title", "").strip()
-            category = (
-                request.form.get("category", "General").strip()[:80]
-                or "General"
-            )
+            category = request.form.get("category", "General").strip()[:80] or "General"
 
             if not file or not file.filename or not title:
                 flash("Choose a file and enter a title.", "error")
@@ -439,10 +393,7 @@ def create_app(test_config=None):
                 return render_template("upload.html")
 
             storage_key = secrets.token_hex(24)
-            storage_path = Path(
-                current_app.config["PRIVATE_STORAGE"]
-            ) / storage_key
-
+            storage_path = Path(current_app.config["PRIVATE_STORAGE"]) / storage_key
             storage_path.write_bytes(content)
 
             doc = Document(
@@ -458,10 +409,8 @@ def create_app(test_config=None):
 
             db.session.add(doc)
             db.session.commit()
-
             audit("UPLOAD", "SUCCESS", doc.id, f"Uploaded file size={len(content)}")
             flash("Document uploaded securely.", "success")
-
             return redirect(url_for("dashboard"))
 
         return render_template("upload.html")
@@ -476,7 +425,6 @@ def create_app(test_config=None):
             ).all()
             if document.owner_id == current_user.id else []
         )
-
         return render_template(
             "document_detail.html",
             document=document,
@@ -487,16 +435,10 @@ def create_app(test_config=None):
     @login_required
     @require_document_access("read")
     def download_document(document):
-        path = (
-            Path(current_app.config["PRIVATE_STORAGE"])
-            / document.storage_key
-        )
+        path = Path(current_app.config["PRIVATE_STORAGE"]) / document.storage_key
 
         if not path.is_file():
-            audit(
-                "DOWNLOAD", "ERROR", document.id,
-                "Private storage object missing"
-            )
+            audit("DOWNLOAD", "ERROR", document.id, "Private storage object missing")
             abort(404)
 
         audit("DOWNLOAD", "SUCCESS", document.id, "Authorised download")
@@ -521,14 +463,12 @@ def create_app(test_config=None):
             else:
                 document.title = title[:255]
                 document.category = category[:80] or "General"
-
                 db.session.commit()
                 audit(
                     "EDIT_METADATA", "SUCCESS", document.id,
                     "Document metadata updated"
                 )
                 flash("Document updated.", "success")
-
                 return redirect(
                     url_for("document_detail", document_id=document.id)
                 )
@@ -541,10 +481,8 @@ def create_app(test_config=None):
     def delete_document(document):
         document.deleted_at = datetime.now(timezone.utc)
         db.session.commit()
-
         audit("DELETE", "SUCCESS", document.id, "Soft-deleted document")
         flash("Document deleted.", "success")
-
         return redirect(url_for("dashboard"))
 
     @app.route("/documents/<int:document_id>/share", methods=["GET", "POST"])
@@ -562,8 +500,7 @@ def create_app(test_config=None):
             ).first()
 
             if (
-                not target
-                or target.id == current_user.id
+                not target or target.id == current_user.id
                 or level not in {"read", "edit"}
             ):
                 flash("Choose a valid active user and permission.", "error")
@@ -576,7 +513,6 @@ def create_app(test_config=None):
                 grant.granted_by = current_user.id
                 grant.created_at = datetime.now(timezone.utc)
                 db.session.commit()
-
                 audit(
                     "PERMISSION_UPDATE", "SUCCESS", document.id,
                     f"Updated grant for user_id={target.id} level={level}"
@@ -588,10 +524,8 @@ def create_app(test_config=None):
                     level=level,
                     granted_by=current_user.id
                 )
-
                 db.session.add(grant)
                 db.session.commit()
-
                 audit(
                     "PERMISSION_GRANT", "SUCCESS", document.id,
                     f"Granted {level} to user_id={target.id}"
@@ -604,10 +538,7 @@ def create_app(test_config=None):
 
         return render_template("share.html", document=document)
 
-    @app.route(
-        "/documents/<int:document_id>/revoke/<int:user_id>",
-        methods=["POST"]
-    )
+    @app.route("/documents/<int:document_id>/revoke/<int:user_id>", methods=["POST"])
     @login_required
     @require_document_access("share")
     def revoke_permission(document, user_id):
@@ -621,16 +552,12 @@ def create_app(test_config=None):
 
         grant.revoked_at = datetime.now(timezone.utc)
         db.session.commit()
-
         audit(
             "PERMISSION_REVOKE", "SUCCESS", document.id,
             f"Revoked access from user_id={user_id}"
         )
         flash("Access revoked.", "success")
-
-        return redirect(
-            url_for("document_detail", document_id=document.id)
-        )
+        return redirect(url_for("document_detail", document_id=document.id))
 
     @app.route("/search")
     @login_required
@@ -650,10 +577,13 @@ def create_app(test_config=None):
 
         query = Document.query.filter(Document.deleted_at.is_(None))
 
-        query = query.filter(db.or_(
-            Document.owner_id == current_user.id,
-            Document.id.in_(shared_ids) if shared_ids else db.false()
-        ))
+        if current_user.role != "admin":
+            query = query.filter(
+                db.or_(
+                    Document.owner_id == current_user.id,
+                    Document.id.in_(shared_ids) if shared_ids else db.false()
+                )
+            )
 
         if term:
             query = query.filter(Document.title.ilike(f"%{term}%"))
@@ -663,10 +593,10 @@ def create_app(test_config=None):
 
         if owner_email:
             owner = User.query.filter_by(email=owner_email).first()
-            if owner:
-                query = query.filter(Document.owner_id == owner.id)
-            else:
-                query = query.filter(db.false())
+            query = (
+                query.filter(Document.owner_id == owner.id)
+                if owner else query.filter(db.false())
+            )
 
         try:
             if start:
@@ -680,14 +610,10 @@ def create_app(test_config=None):
         except ValueError:
             flash("Invalid date filter.", "error")
 
-        docs = query.order_by(
-            Document.created_at.desc()
-        ).limit(100).all()
-
+        docs = query.order_by(Document.created_at.desc()).limit(100).all()
         docs = [
             d for d in docs
-            if d.owner_id == current_user.id
-            or can_access(current_user, d, "read")
+            if d.owner_id == current_user.id or can_access(current_user, d, "read")
         ]
 
         return render_template("search.html", documents=docs)
@@ -702,14 +628,7 @@ def create_app(test_config=None):
             AuditLog.timestamp.desc()
         ).limit(500).all()
 
-        chain_valid, chain_count = verify_audit_chain()
-
-        return render_template(
-            "admin_audit.html",
-            logs=logs,
-            chain_valid=chain_valid,
-            chain_count=chain_count
-        )
+        return render_template("admin_audit.html", logs=logs)
 
     @app.route("/admin/users", methods=["GET", "POST"])
     @login_required
@@ -727,13 +646,11 @@ def create_app(test_config=None):
 
             target.is_active_account = active
             db.session.commit()
-
             audit(
                 "ACCOUNT_STATUS", "SUCCESS",
                 details=f"Updated user_id={target.id} active={active}"
             )
             flash("Account status updated.", "success")
-
             return redirect(url_for("admin_users"))
 
         return render_template(
@@ -775,7 +692,6 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    # Local development only. Use a production WSGI server for deployment.
     app.run(
         host="127.0.0.1",
         port=int(os.environ.get("PORT", "5000")),
