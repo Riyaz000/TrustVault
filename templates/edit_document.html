@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Edit document | TrustVault{% endblock %}
+{% block content %}
+<div class="form-card card"><div class="card-body p-4"><h2>Edit metadata</h2><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label class="form-label mt-2">Title</label><input class="form-control" name="title" value="{{ document.title }}" required maxlength="255">
+<label class="form-label mt-3">Category</label><input class="form-control" name="category" value="{{ document.category }}" maxlength="80">
+<button class="btn btn-primary mt-4">Save changes</button></form></div></div>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Audit logs | TrustVault{% endblock %}
+{% block content %}
+<h1>Security audit log</h1><p class="text-muted">Latest 500 application-recorded events. Hash chaining helps detect some edits but is not independently tamper-proof.</p>
+<div class="alert {{ 'alert-success' if chain_valid else 'alert-warning' }} mb-3">
+  Hash-chain check: <strong>{{ 'PASS' if chain_valid else 'FAILED' }}</strong> across {{ chain_count }} stored event(s).
+  This detects some tampering but cannot stop a database-privileged attacker from rewriting the chain.
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-sm table-hover mb-0"><thead><tr><th>Time</th><th>Actor ID</th><th>Document ID</th><th>Action</th><th>Outcome</th><th>Details</th></tr></thead><tbody>
+{% for log in logs %}<tr><td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td><td>{{ log.actor_id or 'Anonymous' }}</td><td>{{ log.document_id or '-' }}</td><td>{{ log.action }}</td><td><span class="badge {{ 'text-bg-success' if log.outcome == 'SUCCESS' else 'text-bg-danger' }}">{{ log.outcome }}</span></td><td>{{ log.details }}</td></tr>{% else %}<tr><td colspan="6">No events yet.</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

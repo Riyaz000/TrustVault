@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Users | TrustVault{% endblock %}
+{% block content %}
+<h1>User administration</h1><div class="card"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th>Action</th></tr></thead><tbody>
+{% for user in users %}<tr><td>{{ user.id }}</td><td>{{ user.full_name }}</td><td>{{ user.email }}</td><td>{{ user.role }}</td><td>{{ user.is_active_account }}</td><td>{% if user.id != current_user.id %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="user_id" value="{{ user.id }}"><input type="hidden" name="active" value="{{ 'false' if user.is_active_account else 'true' }}"><button class="btn btn-sm btn-outline-secondary">{{ 'Deactivate' if user.is_active_account else 'Activate' }}</button></form>{% else %}Current account{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

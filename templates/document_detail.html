@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ document.title }} | TrustVault{% endblock %}
+{% block content %}
+<div class="card shadow-sm"><div class="card-body p-4">
+  <div class="d-flex justify-content-between flex-wrap gap-2">
+    <div><span class="badge text-bg-secondary">{{ document.category }}</span><h1 class="mt-2">{{ document.title }}</h1></div>
+    <a class="btn btn-primary align-self-start" href="{{ url_for('download_document', document_id=document.id) }}">Download</a>
+  </div>
+  <dl class="row mt-4">
+    <dt class="col-sm-3">Owner</dt><dd class="col-sm-9">{{ document.owner.full_name }}</dd>
+    <dt class="col-sm-3">Filename</dt><dd class="col-sm-9">{{ document.original_filename }}</dd>
+    <dt class="col-sm-3">Size</dt><dd class="col-sm-9">{{ document.size_bytes }} bytes</dd>
+    <dt class="col-sm-3">SHA-256</dt><dd class="col-sm-9"><code>{{ document.sha256_hash }}</code></dd>
+  </dl>
+
+  {% if document.owner_id == current_user.id %}
+    <hr>
+    <h4>Manage access</h4>
+    <p class="text-muted">Enter the email address of an existing active TrustVault account. You can grant Read or Edit access.</p>
+    <form method="post" action="{{ url_for('share_document', document_id=document.id) }}" class="border rounded p-3 mb-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-7">
+          <label for="permission-email" class="form-label">User email</label>
+          <input id="permission-email" class="form-control" type="email" name="email" required placeholder="user@example.com">
+        </div>
+        <div class="col-md-3">
+          <label for="permission-level" class="form-label">Permission</label>
+          <select id="permission-level" class="form-select" name="level" required>
+            <option value="read">Read</option>
+            <option value="edit">Edit</option>
+          </select>
+        </div>
+        <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Grant access</button></div>
+      </div>
+    </form>
+
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <a class="btn btn-outline-secondary" href="{{ url_for('edit_document', document_id=document.id) }}">Edit metadata</a>
+      <form method="post" action="{{ url_for('delete_document', document_id=document.id) }}" onsubmit="return confirm('Delete this document?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-outline-danger" type="submit">Delete</button>
+      </form>
+    </div>
+
+    <h5 class="mt-4">Active permissions</h5>
+    <div class="table-responsive"><table class="table">
+      <thead><tr><th>User</th><th>Permission</th><th>Action</th></tr></thead>
+      <tbody>
+      {% for p in permissions %}
+        <tr><td>{{ p.recipient.email }}</td><td>{{ p.level|title }}</td><td>
+          <form method="post" action="{{ url_for('revoke_permission', document_id=document.id, user_id=p.user_id) }}" onsubmit="return confirm('Revoke access for this user?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger" type="submit">Revoke</button>
+          </form>
+        </td></tr>
+      {% else %}
+        <tr><td colspan="3" class="text-muted">No active grants.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% endif %}
+</div></div>
+{% endblock %}

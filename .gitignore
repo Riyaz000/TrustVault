@@ -1,0 +1,10 @@
+venv/
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+trustvault.db
+private_uploads/*
+!private_uploads/.gitkeep
+instance/

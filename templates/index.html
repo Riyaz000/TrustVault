@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}TrustVault | Secure document access{% endblock %}
+{% block content %}
+<section class="hero">
+  <span class="badge">SECURE DOCUMENT WORKSPACE</span>
+  <h1>Your documents.<br><span class="gradient-text">Your permissions. Your proof.</span></h1>
+  <p class="lead">Sensitive files deserve more than a share link. TrustVault combines named-user access, immediate permission checks, private file storage and an evidence trail for every important action.</p>
+  <div class="d-flex flex-wrap gap-3 mt-4">
+    <a class="btn btn-primary btn-lg" href="{{ url_for('login') }}">Open TrustVault <span aria-hidden="true">↗</span></a>
+    <a class="btn btn-outline-light btn-lg" href="{{ url_for('register') }}">Create an account</a>
+  </div>
+  <div class="row g-3 mt-5">
+    <div class="col-md-4"><div class="card h-100"><div class="card-body"><div class="mb-3 fs-3">◈</div><h5>Document-level access</h5><p class="mb-0">Grant Read or Edit to a specific named account. No folder-wide accidental sharing.</p></div></div></div>
+    <div class="col-md-4"><div class="card h-100"><div class="card-body"><div class="mb-3 fs-3">⌁</div><h5>Revocation that takes effect</h5><p class="mb-0">Every new document request checks the current grant on the server.</p></div></div></div>
+    <div class="col-md-4"><div class="card h-100"><div class="card-body"><div class="mb-3 fs-3">⛨</div><h5>Traceable activity</h5><p class="mb-0">Capture uploads, downloads, edits, deletions, permission changes and denied attempts.</p></div></div></div>
+  </div>
+</section>
+<div class="row g-3 mt-4">
+  <div class="col-md-6"><div class="card h-100"><div class="card-body"><h5>Built around least privilege</h5><p class="mb-0">Administrators can review audit metadata and manage accounts, but do not automatically receive access to document contents.</p></div></div></div>
+  <div class="col-md-6"><div class="card h-100"><div class="card-body"><h5>Honest security boundaries</h5><p class="mb-0">Private storage and a hash-chained log support the demo. The threat model documents what still needs independent production controls.</p></div></div></div>
+</div>
+{% endblock %}

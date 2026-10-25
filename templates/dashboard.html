@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | TrustVault{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+  <div><span class="badge mb-2">PRIVATE WORKSPACE</span><h1>Welcome back, {{ current_user.full_name.split(" ")[0] }}</h1><p class="text-muted mb-0">Your workspace shows only documents you own or have an active grant to access.</p></div>
+  {% if current_user.role in ['owner', 'admin'] %}<a class="btn btn-primary" href="{{ url_for('upload_document') }}">Upload document</a>{% endif %}
+</div>
+<div class="row g-3 mb-4"><div class="col-md-4"><div class="card"><div class="card-body"><p class="mb-1">Visible documents</p><h2 class="mb-0">{{ documents|length }}</h2><small>Based on your current access</small></div></div></div><div class="col-md-4"><div class="card"><div class="card-body"><p class="mb-1">Your role</p><h2 class="mb-0 text-capitalize">{{ current_user.role }}</h2><small>Permissions enforced server-side</small></div></div></div><div class="col-md-4"><div class="card"><div class="card-body"><p class="mb-1">Access model</p><h2 class="mb-0">Named grants</h2><small>Read / Edit per document</small></div></div></div></div>
+<div class="card"><div class="table-responsive"><table class="table table-hover mb-0">
+<thead><tr><th>Document</th><th>Category</th><th>Owner</th><th>Uploaded</th><th>Actions</th></tr></thead><tbody>
+{% for doc in documents %}
+<tr><td>{{ doc.title }}</td><td>{{ doc.category }}</td><td>{{ doc.owner.full_name }}</td><td>{{ doc.created_at.strftime('%Y-%m-%d') }}</td>
+<td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('document_detail', document_id=doc.id) }}">Open</a></td></tr>
+{% else %}<tr><td colspan="5" class="text-center text-muted p-4">No documents available. Upload one or ask an owner to share a document with you.</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}
